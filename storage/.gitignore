@@ -1,0 +1,9 @@
+# Ignore everything in this directory
+*
+
+# But don't ignore directories (so git can traverse to .gitkeep)
+!*/
+
+# Keep .gitignore and .gitkeep files
+!.gitignore
+!**/.gitkeep
