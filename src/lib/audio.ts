@@ -9,7 +9,7 @@ export interface AudioExtractionResult {
 
 export interface AudioEnergyPoint {
   time: number;
-  rms: number; // Volume in dB (e.g. -12dB is loud, -50dB is quiet)
+  rms: number; // Volume in LUFS
   energyScore: number; // Normalized 0-100
 }
 
@@ -22,7 +22,6 @@ export async function extractAudio(
 ): Promise<AudioExtractionResult> {
   const audioPath = path.join(CONFIG.AUDIO_DIR, `${outputPrefix}.mp3`);
 
-  // ffmpeg -y -i video.mp4 -vn -ar 16000 -ac 1 -b:a 64k audio.mp3
   const args = [
     '-y',
     '-i',
@@ -33,15 +32,12 @@ export async function extractAudio(
     '-ac',
     '1',
     '-b:a',
-    '64k',
+    '32k',
     audioPath,
   ];
 
   await new Promise<void>((resolve, reject) => {
     const proc = spawn(CONFIG.BIN_FFMPEG, args);
-    proc.stderr.on('data', (d) => {
-      // ffmpeg outputs info on stderr
-    });
     proc.on('close', (code) => {
       if (code === 0 && fs.existsSync(audioPath)) {
         resolve();
@@ -56,24 +52,22 @@ export async function extractAudio(
 
 /**
  * "Reaction Judge" Audio Analyzer:
- * Analyzes audio volume across the track to identify hype spikes, shouting, and high energy reactions.
+ * Uses EBU R128 momentary loudness across the track to identify hype spikes, shouting, and high energy reactions.
  */
 export async function analyzeAudioEnergy(
   audioPath: string
 ): Promise<AudioEnergyPoint[]> {
-  // Use ebur128 or astats to get RMS volume across intervals
   const args = [
     '-i',
     audioPath,
     '-af',
-    'astats=metadata=1:reset=1',
+    'ebur128',
     '-f',
     'null',
     '-',
   ];
 
   const points: AudioEnergyPoint[] = [];
-  let currentTime = 0;
 
   await new Promise<void>((resolve) => {
     const proc = spawn(CONFIG.BIN_FFMPEG, args);
@@ -85,23 +79,23 @@ export async function analyzeAudioEnergy(
       buffer = lines.pop() || '';
 
       for (const line of lines) {
-        // Parse time: e.g. pts_time: 12.345
-        const timeMatch = line.match(/pts_time:\s*([\d\.]+)/);
-        if (timeMatch) {
-          currentTime = parseFloat(timeMatch[1]);
-        }
-        // Parse RMS level: e.g. [Parsed_astats_0] RMS level dB: -24.5
-        const rmsMatch = line.match(/RMS level dB:\s*(-?[\d\.]+)/);
-        if (rmsMatch) {
-          const rms = parseFloat(rmsMatch[1]);
-          if (!isNaN(rms) && isFinite(rms)) {
-            // Normalize dB: -60dB (silence) to -5dB (very loud / peak)
-            const normalized = Math.max(0, Math.min(100, ((rms + 50) / 45) * 100));
-            points.push({
-              time: currentTime,
-              rms,
-              energyScore: Math.round(normalized),
-            });
+        // ebur128 outputs: [Parsed_ebur128_0 @ ...] t: 12.345 TARGET: ... M: -16.2 S: ...
+        const match = line.match(/t:\s*([\d\.]+)\s+TARGET:[^\n]*M:\s*(-?[\d\.]+)/);
+        if (match) {
+          const time = parseFloat(match[1]);
+          const lufs = parseFloat(match[2]);
+
+          if (!isNaN(time) && !isNaN(lufs) && isFinite(lufs)) {
+            // LUFS: -50 (silence) to -10 (very loud screaming/jump scare)
+            const normalized = Math.max(0, Math.min(100, ((lufs + 42) / 32) * 100));
+            // Sample points at 1-second resolution to keep memory light
+            if (points.length === 0 || time - points[points.length - 1].time >= 1.0) {
+              points.push({
+                time: Math.round(time * 10) / 10,
+                rms: lufs,
+                energyScore: Math.round(normalized),
+              });
+            }
           }
         }
       }

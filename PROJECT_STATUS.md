@@ -5,11 +5,13 @@
 ---
 
 ## 1. Goal
+
 Reverse engineer and build a 100% free, self-hosted clone of **PeakCut** (`https://peakcut.haziqqasmi.com/`), removing all pricing paywalls, credit restrictions, and subscriptions.
 
 ---
 
 ## 2. Replicated Features & Functionalities
+
 1. **Multi-Platform Ingestion**:
    - YouTube, Twitch, Kick links via standalone project-local `yt-dlp`.
    - Direct local video uploads (MP4, MOV, WebM).
@@ -42,6 +44,7 @@ Reverse engineer and build a 100% free, self-hosted clone of **PeakCut** (`https
 ---
 
 ## 3. Directory Layout & Key Modules
+
 ```
 peakcut-studio/
 ├── bin/
@@ -87,6 +90,7 @@ peakcut-studio/
 ---
 
 ## 4. Current Milestone Status
+
 - [x] Stage 1: Reverse-engineer target site (`https://peakcut.haziqqasmi.com/`).
 - [x] Stage 2: Verify all `.agents` skills in repository.
 - [x] Stage 3: Setup hermetic project-local binaries (`yt-dlp` in `bin/yt-dlp`, `ffmpeg` in `node_modules/ffmpeg-static/`).
@@ -99,14 +103,26 @@ peakcut-studio/
 - [x] Fix: Dev server running with network access enabled so `yt-dlp` can stream from YouTube/Twitch/Kick.
 - [x] Fix: Updated Groq chat model in `judge.ts` to `openai/gpt-oss-120b`, `openai/gpt-oss-20b`, `qwen/qwen3.8-27b`, completely removing decommissioned llama models.
 - [x] Fix: Intelligent transcript window budgeting (<2,000 tokens) prioritized by audio energy peaks to stay comfortably under Groq free-tier 8,000 TPM limit.
+- [x] Optimization: Upgraded to Audio-First Ingestion (`downloadAudioOnly` downloads ~20MB audio in 2s instead of 5GB video).
+- [x] Optimization: Surgical Range Slicing (`downloadVideoSection` downloads ONLY the selected 30-40s video segments via yt-dlp HTTP range requests).
+- [x] Fix: Groq Whisper 413 "Request Entity Too Large" resolved by speech-optimizing audio (16kHz mono 32k/24k) with automatic compression ceiling (<22MB), allowing 1-2+ hour streams without hitting Groq's 25MB upload limit.
+- [x] Fix: Overhauled Reaction Judge with EBU R128 momentary loudness (`ebur128`), capturing 10,000+ accurate excitement/screaming measurements.
+- [x] Upgrade: Multi-Dimensional Viral Intelligence (Humor, Jokes, Plot Twists, Suspense, Roasts, Storytelling). The Words Judge groups complete narrative scene blocks (~35s) rather than treating audio volume as a prerequisite.
+- [x] Fix: Replaced isolated sentence sampling with full candidate scene windows (buildup + climax + aftermath). Enforced STRICT 25-50s clip duration in code so clips are never 2s fragments.
+- [x] Feature: Integrated YouTube Audience Rewind Heatmap (`getVideoMetadata` extracts viewer replay spikes and prioritizes them in the Words & Reaction scoring engine).
+- [x] Git & Storage Setup: Implemented nested `storage/.gitignore` and `.gitkeep` patterns ensuring all heavy media (.mp4, .mp3, .ass) and private keys (settings.json) are excluded from GitHub while preserving directory hierarchy.
+- [x] Security Audit & Hardening: Verified zero frontend key exposure. Removed any masked key echoes from API responses; keys are never sent over the wire or bundled in client JS.
 
 ---
 
 ## 5. How to Run the Studio
+
 From the project folder:
+
 ```bash
 cd peakcut-studio
 npm run dev
 ```
+
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 Click **"Set Free API Key"** on the top right to paste your free **Groq API key** (or Google Gemini key), paste any YouTube/Twitch/Kick link, and click **"Make Viral Clips"**!

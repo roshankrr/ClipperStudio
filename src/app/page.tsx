@@ -1,4 +1,4 @@
-'use client';
+"use client";
 
 import React, { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
@@ -7,7 +7,7 @@ import ProgressStepper from '@/components/ProgressStepper';
 import ClipCard from '@/components/ClipCard';
 import SettingsModal from '@/components/SettingsModal';
 import { Job, CaptionStyle, FrameLayout } from '@/lib/types';
-import { Sparkles, Flame, Film, CheckCircle2, ShieldCheck, Zap } from 'lucide-react';
+import { Sparkles, Flame, Film, CheckCircle2, ShieldCheck, Zap, Trash2 } from 'lucide-react';
 
 export default function HomePage() {
   const [activeJob, setActiveJob] = useState<Job | null>(null);
@@ -22,7 +22,7 @@ export default function HomePage() {
   }, []);
 
   function checkSettings() {
-    fetch('/api/settings')
+    fetch("/api/settings")
       .then((r) => r.json())
       .then((data) => {
         setHasApiKey(Boolean(data.hasGroqKey || data.hasGeminiKey));
@@ -31,13 +31,17 @@ export default function HomePage() {
   }
 
   function loadRecentJobs() {
-    fetch('/api/status')
+    fetch("/api/status")
       .then((r) => r.json())
       .then((data) => {
         if (data.jobs && Array.isArray(data.jobs)) {
           setRecentJobs(data.jobs);
           // If the first job is still processing, attach to it
-          if (data.jobs[0] && data.jobs[0].status !== 'completed' && data.jobs[0].status !== 'failed') {
+          if (
+            data.jobs[0] &&
+            data.jobs[0].status !== "completed" &&
+            data.jobs[0].status !== "failed"
+          ) {
             setActiveJob(data.jobs[0]);
           }
         }
@@ -47,7 +51,11 @@ export default function HomePage() {
 
   // Poll active job status
   useEffect(() => {
-    if (!activeJob || activeJob.status === 'completed' || activeJob.status === 'failed') {
+    if (
+      !activeJob ||
+      activeJob.status === "completed" ||
+      activeJob.status === "failed"
+    ) {
       return;
     }
 
@@ -57,7 +65,10 @@ export default function HomePage() {
         .then((data) => {
           if (data.job) {
             setActiveJob(data.job);
-            if (data.job.status === 'completed' || data.job.status === 'failed') {
+            if (
+              data.job.status === "completed" ||
+              data.job.status === "failed"
+            ) {
               loadRecentJobs();
             }
           }
@@ -68,16 +79,20 @@ export default function HomePage() {
     return () => clearInterval(interval);
   }, [activeJob]);
 
-  async function handleStartUrl(url: string, captionStyle: CaptionStyle, frameLayout: FrameLayout) {
+  async function handleStartUrl(
+    url: string,
+    captionStyle: CaptionStyle,
+    frameLayout: FrameLayout,
+  ) {
     if (!hasApiKey) {
       setIsSettingsOpen(true);
       return;
     }
 
     try {
-      const res = await fetch('/api/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url, captionStyle, frameLayout }),
       });
 
@@ -88,11 +103,15 @@ export default function HomePage() {
         alert(data.error);
       }
     } catch (err: any) {
-      alert(err.message || 'Failed to start job');
+      alert(err.message || "Failed to start job");
     }
   }
 
-  async function handleStartFile(file: File, captionStyle: CaptionStyle, frameLayout: FrameLayout) {
+  async function handleStartFile(
+    file: File,
+    captionStyle: CaptionStyle,
+    frameLayout: FrameLayout,
+  ) {
     if (!hasApiKey) {
       setIsSettingsOpen(true);
       return;
@@ -100,12 +119,12 @@ export default function HomePage() {
 
     try {
       const formData = new FormData();
-      formData.append('file', file);
-      formData.append('captionStyle', captionStyle);
-      formData.append('frameLayout', frameLayout);
+      formData.append("file", file);
+      formData.append("captionStyle", captionStyle);
+      formData.append("frameLayout", frameLayout);
 
-      const res = await fetch('/api/process', {
-        method: 'POST',
+      const res = await fetch("/api/process", {
+        method: "POST",
         body: formData,
       });
 
@@ -116,62 +135,103 @@ export default function HomePage() {
         alert(data.error);
       }
     } catch (err: any) {
-      alert(err.message || 'Failed to upload video');
+      alert(err.message || 'Failed to start file upload');
+    }
+  }
+
+  async function handleDeleteJob(jobId: string) {
+    const ok = window.confirm('Delete this video and all its rendered clips from local storage?');
+    if (!ok) return;
+
+    try {
+      const res = await fetch(`/api/storage?jobId=${jobId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setRecentJobs((prev) => prev.filter((j) => j.id !== jobId));
+        if (activeJob?.id === jobId) {
+          setActiveJob(null);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to delete job:', err);
     }
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-dark-frame text-stone-100">
-      <Navbar onOpenSettings={() => setIsSettingsOpen(true)} hasApiKey={hasApiKey} />
+    <div className="min-h-screen bg-dark-bg text-stone-100 flex flex-col font-sans">
+      {/* Top Navbar with prominent Clear Storage and Settings */}
+      <Navbar
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        hasApiKey={hasApiKey}
+        onStorageCleared={() => {
+          setActiveJob(null);
+          setRecentJobs([]);
+        }}
+      />
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-6 py-10 space-y-12">
         {/* Hero Section */}
-        <div className="text-center max-w-3xl mx-auto space-y-4">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-brand/10 border border-brand/30 text-xs font-bold text-brand uppercase tracking-wider">
-            <Zap className="w-3.5 h-3.5 fill-brand" />
-            <span>Open Source · Free Self-Hosted Alternative</span>
+        <div className="text-center space-y-4 max-w-2xl mx-auto">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand/10 border border-brand/30 text-brand text-xs font-semibold">
+            <Flame className="w-3.5 h-3.5" />
+            <span>AI Stream &amp; Long-Form Video Clipper</span>
           </div>
 
-          <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
-            Clip live streams &amp; videos while they&apos;re fresh.
+          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white leading-tight">
+            Turn Streams &amp; VODs into{' '}
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand to-amber-300">
+              Viral Vertical Clips
+            </span>
           </h1>
 
-          <p className="text-base sm:text-lg text-stone-400">
-            Dual AI judges find the viral moments and turn them into captioned 9:16 vertical clips for Shorts, Reels, and TikTok.{' '}
-            <span className="text-brand font-semibold">Zero subscriptions, zero paywalls.</span>
+          <p className="text-sm sm:text-base text-stone-400">
+            Paste a YouTube, Twitch, or Kick link. Audience heatmaps &amp; AI judges automatically find
+            humorous punchlines, suspenseful climax scenes, and speech peaks—reframed to 9:16 with karaoke subtitles.
           </p>
         </div>
 
         {/* Input Form */}
-        <UrlInputForm
-          onSubmitUrl={handleStartUrl}
-          onSubmitFile={handleStartFile}
-          disabled={Boolean(activeJob && activeJob.status !== 'completed' && activeJob.status !== 'failed')}
-        />
-
-        {/* Active Job Progress */}
-        {activeJob && (
-          <ProgressStepper
-            status={activeJob.status}
-            progress={activeJob.progress}
-            statusMessage={activeJob.statusMessage}
-            error={activeJob.error}
+        <div className="bg-dark-frame border border-dark-border rounded-2xl p-6 sm:p-8 shadow-xl">
+          <UrlInputForm
+            onSubmitUrl={handleStartUrl}
+            onSubmitFile={handleStartFile}
+            disabled={Boolean(activeJob && activeJob.status !== 'completed' && activeJob.status !== 'failed')}
           />
+        </div>
+
+        {/* Active Job Progress Stepper */}
+        {activeJob && (
+          <div className="bg-dark-frame border border-dark-border rounded-2xl p-6 shadow-xl">
+            <ProgressStepper
+              status={activeJob.status}
+              progress={activeJob.progress}
+              statusMessage={activeJob.statusMessage}
+              error={activeJob.error}
+            />
+          </div>
         )}
 
         {/* Active Job Generated Clips */}
-        {activeJob && activeJob.clips && activeJob.clips.length > 0 && (
+        {activeJob && activeJob.status === 'completed' && activeJob.clips.length > 0 && (
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-black text-white flex items-center gap-2">
-                  <Flame className="w-6 h-6 text-brand fill-brand" />
-                  <span>Generated Clips ({activeJob.clips.length})</span>
-                </h2>
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-brand" />
+                  <span>Ready! Generated Viral Clips</span>
+                </h3>
                 <p className="text-xs text-stone-400">
-                  Scored and ranked by AI Words &amp; Reaction Judges. Ready to download or post.
+                  Reframed to 9:16 with animated subtitles &amp; hook headlines. Ready for TikTok, Reels &amp; Shorts.
                 </p>
               </div>
+
+              <button
+                onClick={() => handleDeleteJob(activeJob.id)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-stone-400 hover:text-red-400 hover:bg-red-500/10 border border-dark-border transition-all"
+                title="Delete this video and free storage"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Remove Video</span>
+              </button>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
@@ -185,23 +245,38 @@ export default function HomePage() {
         {/* Recent Clips / Jobs Gallery */}
         {recentJobs.length > 0 && (!activeJob || activeJob.status === 'completed') && (
           <div className="pt-8 border-t border-dark-border/60 space-y-8">
-            <div>
-              <h3 className="text-xl font-bold text-white flex items-center gap-2">
-                <Film className="w-5 h-5 text-stone-400" />
-                <span>Your Generated Clip Library</span>
-              </h3>
-              <p className="text-xs text-stone-400">Previous runs saved locally on your machine.</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-bold text-white flex items-center gap-2">
+                  <Film className="w-5 h-5 text-stone-400" />
+                  <span>Your Generated Clip Library</span>
+                </h3>
+                <p className="text-xs text-stone-400">Previous runs saved locally on your machine.</p>
+              </div>
             </div>
 
             {recentJobs
               .filter((j) => j.clips && j.clips.length > 0)
               .map((job) => (
-                <div key={job.id} className="space-y-4">
-                  <div className="flex items-center justify-between text-xs text-stone-400 pb-2 border-b border-dark-border/30">
-                    <span className="font-semibold text-stone-200">
-                      {job.title || job.sourceUrl || job.inputFilename}
-                    </span>
-                    <span>{new Date(job.createdAt).toLocaleString()}</span>
+                <div key={job.id} className="space-y-4 bg-dark-frame/50 border border-dark-border/50 rounded-2xl p-5">
+                  <div className="flex items-center justify-between text-xs text-stone-400 pb-3 border-b border-dark-border/40">
+                    <div>
+                      <span className="font-semibold text-stone-200 text-sm">
+                        {job.title || job.sourceUrl || job.inputFilename}
+                      </span>
+                      <span className="ml-3 text-stone-500">
+                        {new Date(job.createdAt).toLocaleString()}
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => handleDeleteJob(job.id)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium text-stone-400 hover:text-red-400 hover:bg-red-500/10 border border-dark-border transition-all"
+                      title="Delete this video & clips from storage"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete Video &amp; Storage</span>
+                    </button>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">

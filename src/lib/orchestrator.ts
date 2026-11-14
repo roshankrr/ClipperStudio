@@ -3,7 +3,7 @@ import fs from 'fs';
 import { CONFIG } from './config';
 import { Job, Clip, CaptionStyle, FrameLayout } from './types';
 import { saveJob, updateJob, initStorage } from './storage';
-import { downloadVideo } from './downloader';
+import { getVideoMetadata, downloadAudioOnly, downloadVideoSection, tryFetchYouTubeSubtitles } from './downloader';
 import { extractAudio, analyzeAudioEnergy } from './audio';
 import { transcribeAudio } from './transcriber';
 import { findPeakMoments } from './judge';
@@ -37,7 +37,6 @@ export async function processVideoJob(params: StartJobParams): Promise<Job> {
 
   saveJob(initialJob);
 
-  // Run pipeline asynchronously in background
   runPipeline(jobId, params).catch((err) => {
     console.error(`Pipeline failed for job ${jobId}:`, err);
     updateJob(jobId, {
@@ -51,75 +50,117 @@ export async function processVideoJob(params: StartJobParams): Promise<Job> {
 }
 
 async function runPipeline(jobId: string, params: StartJobParams) {
-  let videoPath = '';
+  let audioPath = '';
   let videoTitle = params.originalFilename || 'Stream Video';
+  let totalDuration = 0;
+  let heatmapData: any = undefined;
 
-  // Step 1: Ingest Video
+  // STEP 1 & 2: Ingestion & Audio Preparation
   if (params.sourceUrl) {
     updateJob(jobId, {
       status: 'downloading',
       progress: 10,
-      statusMessage: 'Downloading stream / video via yt-dlp...',
+      statusMessage: 'Checking stream metadata & audience replay heatmap...',
     });
 
-    const dl = await downloadVideo(params.sourceUrl, jobId, (prog, msg) => {
+    const meta = await getVideoMetadata(params.sourceUrl);
+    videoTitle = meta.title;
+    totalDuration = meta.duration;
+    heatmapData = meta.heatmap;
+
+    updateJob(jobId, {
+      title: videoTitle,
+      duration: totalDuration,
+      hasHeatmap: Boolean(meta.heatmap && meta.heatmap.length > 0),
+      progress: 20,
+      statusMessage: meta.heatmap && meta.heatmap.length > 0
+        ? `Found ${meta.heatmap.length} audience engagement heatmap peaks! Downloading audio stream...`
+        : 'Downloading fast audio stream (~20MB audio-first mode)...',
+    });
+
+    // Fast Audio-First Ingestion (only downloads ~20-30MB instead of 5GB video!)
+    audioPath = await downloadAudioOnly(params.sourceUrl, jobId, (prog, msg) => {
       updateJob(jobId, { progress: prog, statusMessage: msg });
     });
-    videoPath = dl.videoPath;
-    videoTitle = dl.title;
   } else if (params.uploadedFilePath) {
-    videoPath = params.uploadedFilePath;
+    videoTitle = params.originalFilename || 'Uploaded Video';
     updateJob(jobId, {
-      status: 'downloading',
+      status: 'extracting_audio',
       progress: 25,
-      statusMessage: 'Video file received and stored.',
+      statusMessage: 'Extracting audio track from uploaded file...',
     });
+
+    const extracted = await extractAudio(params.uploadedFilePath, jobId);
+    audioPath = extracted.audioPath;
   } else {
     throw new Error('Neither source URL nor uploaded file was provided.');
   }
 
   updateJob(jobId, {
-    videoPath,
+    audioPath,
     title: videoTitle,
-    status: 'extracting_audio',
-    progress: 30,
-    statusMessage: 'Extracting audio track for transcription and audio analysis...',
-  });
-
-  // Step 2: Extract Audio & Run Reaction Judge (Audio Energy Spike Analysis)
-  const { audioPath } = await extractAudio(videoPath, jobId);
-  updateJob(jobId, { audioPath });
-
-  updateJob(jobId, {
     status: 'transcribing',
-    progress: 45,
-    statusMessage: 'Analyzing audio energy & transcribing speech with Groq Whisper...',
+    progress: 40,
+    statusMessage: 'Checking for native captions & analyzing audio energy...',
   });
+
+  // STEP 3: Subtitles / Transcription + Audio Energy Analysis
+  let nativeSegments: any[] | null = null;
+  if (params.sourceUrl) {
+    try {
+      nativeSegments = await tryFetchYouTubeSubtitles(params.sourceUrl, jobId);
+      if (nativeSegments && nativeSegments.length > 0) {
+        updateJob(jobId, {
+          progress: 50,
+          statusMessage: `Found ${nativeSegments.length} native YouTube captions! Skipping Whisper API...`,
+        });
+      }
+    } catch {}
+  }
+
+  const energyPointsPromise = analyzeAudioEnergy(audioPath);
+
+  const transcriptPromise = nativeSegments && nativeSegments.length > 0
+    ? Promise.resolve({
+        text: nativeSegments.map((s) => s.text).join(' '),
+        segments: nativeSegments,
+        duration: totalDuration,
+      })
+    : transcribeAudio(audioPath, (msg) => {
+        updateJob(jobId, { statusMessage: msg });
+      });
 
   const [energyPoints, transcriptResult] = await Promise.all([
-    analyzeAudioEnergy(audioPath),
-    transcribeAudio(audioPath),
+    energyPointsPromise,
+    transcriptPromise,
   ]);
 
-  // Step 3: Words Judge & Dual Consensus Peak Detection
+  if (!totalDuration) {
+    totalDuration = transcriptResult.duration;
+  }
+
+  // STEP 4: Dual/Triple AI Judges (Heatmap + Words + Audio Reaction)
   updateJob(jobId, {
     status: 'scoring',
-    progress: 65,
-    statusMessage: 'Dual AI Judges finding peak viral moments and writing hooks...',
+    progress: 60,
+    statusMessage: heatmapData && heatmapData.length > 0
+      ? 'Triple AI Judges analyzing audience heatmap + words + hype reactions...'
+      : 'Dual AI Judges finding peak viral moments and writing hooks...',
   });
 
   const moments = await findPeakMoments(
     transcriptResult.segments,
     energyPoints,
-    transcriptResult.duration,
-    3 // Find top 3 viral clips
+    totalDuration,
+    heatmapData,
+    3 // Top 3 clips
   );
 
-  // Step 4: Render Vertical 9:16 Clips with Animated Karaoke Subtitles
+  // STEP 5: Surgical Video Slicing & Vertical 9:16 Subtitle Rendering
   updateJob(jobId, {
     status: 'rendering',
     progress: 75,
-    statusMessage: `Rendering ${moments.length} vertical 9:16 clips with animated captions...`,
+    statusMessage: `Slicing & rendering ${moments.length} vertical 9:16 clips with animated captions...`,
   });
 
   const generatedClips: Clip[] = [];
@@ -132,10 +173,21 @@ async function runPipeline(jobId: string, params: StartJobParams) {
 
     updateJob(jobId, {
       progress: Math.min(95, 75 + Math.round(((i + 1) / moments.length) * 20)),
-      statusMessage: `Rendering Clip ${i + 1}/${moments.length}: "${moment.hook}"...`,
+      statusMessage: `Slicing & rendering Clip ${i + 1}/${moments.length}: "${moment.hook}" (${moment.score}/100)...`,
     });
 
-    // 1. Generate styled subtitles (.ass)
+    let sourceForRender = '';
+
+    if (params.sourceUrl) {
+      // Surgical Range Slicing: Download ONLY this 30-40s video section directly!
+      const rawSectionPath = path.join(CONFIG.VIDEOS_DIR, `${clipId}_raw.mp4`);
+      await downloadVideoSection(params.sourceUrl, moment.startTime, moment.endTime, rawSectionPath);
+      sourceForRender = rawSectionPath;
+    } else if (params.uploadedFilePath) {
+      sourceForRender = params.uploadedFilePath;
+    }
+
+    // Generate ASS karaoke subtitles with word-level highlight
     generateAssSubtitles(
       transcriptResult.segments,
       moment.startTime,
@@ -145,17 +197,17 @@ async function runPipeline(jobId: string, params: StartJobParams) {
       subPath
     );
 
-    // 2. Render vertical 9:16 MP4 with burned subtitles
+    // Render vertical 9:16 MP4 with burned subtitles
     await renderVerticalClip({
-      sourceVideoPath: videoPath,
-      startTime: moment.startTime,
-      endTime: moment.endTime,
+      sourceVideoPath: sourceForRender,
+      startTime: params.sourceUrl ? 0 : moment.startTime,
+      endTime: params.sourceUrl ? (moment.endTime - moment.startTime) : moment.endTime,
       subtitlePath: subPath,
       layout: params.frameLayout,
       outputClipPath: clipVideoPath,
     });
 
-    generatedClips.push({
+    const clip: Clip = {
       id: clipId,
       jobId,
       title: moment.title,
@@ -171,14 +223,26 @@ async function runPipeline(jobId: string, params: StartJobParams) {
       description: moment.description,
       hashtags: moment.hashtags,
       createdAt: new Date().toISOString(),
+    };
+
+    generatedClips.push(clip);
+
+    updateJob(jobId, {
+      clips: [...generatedClips],
     });
+
+    // Clean up temporary surgical slice if it was downloaded
+    if (params.sourceUrl && fs.existsSync(sourceForRender)) {
+      try {
+        fs.unlinkSync(sourceForRender);
+      } catch {}
+    }
   }
 
-  // Done!
   updateJob(jobId, {
     status: 'completed',
     progress: 100,
-    statusMessage: `Ready! Generated ${generatedClips.length} clips with zero limits.`,
+    statusMessage: `Ready! Generated ${generatedClips.length} viral clips (Audience & AI scored).`,
     clips: generatedClips,
   });
 }

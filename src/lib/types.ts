@@ -15,6 +15,12 @@ export interface TranscriptSegment {
   words?: WordTimestamp[];
 }
 
+export interface HeatmapPoint {
+  start_time: number;
+  end_time: number;
+  value: number;
+}
+
 export interface ClipMoment {
   id: string;
   startTime: number;
@@ -27,6 +33,7 @@ export interface ClipMoment {
   hashtags: string[];
   wordsScore: number;
   reactionScore: number;
+  heatmapScore?: number;
 }
 
 export interface Clip {
@@ -65,6 +72,7 @@ export interface Job {
   videoPath?: string;
   audioPath?: string;
   duration?: number;
+  hasHeatmap?: boolean;
   status: JobStatus;
   progress: number;
   statusMessage: string;
