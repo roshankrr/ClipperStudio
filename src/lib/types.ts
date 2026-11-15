@@ -1,5 +1,17 @@
 export type CaptionStyle = 'bounce' | 'hype' | 'clean';
 export type FrameLayout = 'blurred-fill' | 'smart-crop' | 'center-crop';
+export type TemplateId = 'viral-clipper' | 'versus-comparison' | 'gaming-split';
+
+export interface TextOverlay {
+  id: string;
+  text: string;
+  xPercent: number; // 0 to 100
+  yPercent: number; // 0 to 100
+  fontSize?: number;
+  fontColor?: string;
+  bgColor?: string;
+  style?: 'badge' | 'banner' | 'clean';
+}
 
 export interface WordTimestamp {
   word: string;
@@ -51,6 +63,8 @@ export interface Clip {
   publicUrl: string;
   description: string;
   hashtags: string[];
+  overlays?: TextOverlay[];
+  youtubeUrl?: string;
   createdAt: string;
 }
 
@@ -73,6 +87,7 @@ export interface Job {
   audioPath?: string;
   duration?: number;
   hasHeatmap?: boolean;
+  templateId?: TemplateId;
   status: JobStatus;
   progress: number;
   statusMessage: string;

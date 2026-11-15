@@ -1,6 +1,7 @@
 # PeakCut Open Studio - Project Checkpoint & Handoff Guide
 
-> **Purpose**: This file acts as a persistent checkpoint and state ledger. If context is compacted, restarted, or transferred to another agent, any agent can read this file and instantly resume work without starting over.
+> **Purpose**: This file acts as a persistent checkpoint and state ledger. If context is compacted, restarted, or transferred to another agent, any agent can read this file and instantly resume work without starting over.  
+> **Roadmap & Future Upgrades**: See [POTENTIAL_UPGRADES.md](file:///Users/rish/Desktop/Trials/clipping_rea/rea/peakcut-studio/POTENTIAL_UPGRADES.md) for planned features (Hermes Agent MCP integration, YouTube Shorts direct publishing, split-screen layouts, clip trimming).
 
 ---
 

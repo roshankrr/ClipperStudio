@@ -105,13 +105,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
   let events = '';
 
-  // 1. Pinned Hook Line (Top center banner, visible throughout the clip)
-  const clipDuration = clipEnd - clipStart;
-  if (hook) {
-    events += `Dialogue: 0,0:00:00.00,${formatAssTime(clipDuration)},Hook,,0,0,0,,{\\bord3\\shad2\\c&H00338BFF&}[ ${hook.toUpperCase()} ]\n`;
-  }
-
-  // 2. Group words into 3-4 word phrases with karaoke highlighting
+  // Group words into 3-4 word phrases with karaoke highlighting
   const phraseSize = 3;
   for (let i = 0; i < clipWords.length; i += phraseSize) {
     const chunk = clipWords.slice(i, i + phraseSize);

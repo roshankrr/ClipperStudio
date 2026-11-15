@@ -36,7 +36,12 @@ export async function renderVerticalClip({
       `[bg][fg]overlay=(W-w)/2:(H-h)/2[base]`,
     ].join(';');
   } else if (layout === 'center-crop') {
-    filterString = `[0:v]crop=ih*9/16:ih:(iw-ow)/2:0,scale=1080:1920[base]`;
+    // Wide 9:13 / 9:14 Action View: preserves 75%+ of horizontal field so gameplay HUD/action is visible
+    filterString = [
+      `[0:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:5[bg]`,
+      `[0:v]crop=min(iw\\,ih*13/16):ih:(iw-ow)/2:0,scale=1080:-2[fg]`,
+      `[bg][fg]overlay=(W-w)/2:(H-h)/2[base]`,
+    ].join(';');
   } else {
     // Default blurred-fill
     filterString = [
